@@ -28,25 +28,27 @@ export const DispatchListPage: React.FC<DispatchListPageProps> = ({
   onCreateDispatch,
   onOpenPublicLink,
 }) => {
-  const { user } = useAuth();
+  const { user, quickLoginDemoRole } = useAuth();
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadDispatches();
-  }, [statusFilter]);
+  }, [statusFilter, user]);
 
   const loadDispatches = async () => {
     setLoading(true);
+    setError(null);
     try {
       const filter = statusFilter === 'ALL' ? undefined : statusFilter;
       const data = await api.getDispatches(filter);
       setDispatches(data);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to load shipments.');
     } finally {
       setLoading(false);
     }
@@ -64,7 +66,7 @@ export const DispatchListPage: React.FC<DispatchListPageProps> = ({
     const matchesQuery =
       d.dispatchNumber.toLowerCase().includes(query) ||
       d.partnerName.toLowerCase().includes(query) ||
-      d.businessName.toLowerCase().includes(query) ||
+      d.senderBusinessName.toLowerCase().includes(query) ||
       d.driverName?.toLowerCase().includes(query);
     return matchesQuery;
   });
@@ -88,7 +90,15 @@ export const DispatchListPage: React.FC<DispatchListPageProps> = ({
           </p>
         </div>
 
-        {canCreate && (
+        {!user ? (
+          <button
+            onClick={() => quickLoginDemoRole('SENDER')}
+            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Sign In to Create Dispatch</span>
+          </button>
+        ) : canCreate ? (
           <button
             onClick={onCreateDispatch}
             className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
@@ -96,8 +106,61 @@ export const DispatchListPage: React.FC<DispatchListPageProps> = ({
             <PlusCircle className="w-4 h-4" />
             <span>Create Dispatch</span>
           </button>
-        )}
+        ) : null}
       </div>
+
+      {/* Guest Explorer Banner if not authenticated */}
+      {!user && (
+        <div className="bg-gradient-to-r from-indigo-950/90 via-slate-900 to-indigo-950/90 border border-indigo-800/40 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">
+                Public Exploration Mode
+              </span>
+              <span className="text-xs text-slate-300 font-medium">Viewing Sandbox Dispatches</span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Select any shipment below to inspect manifest details and reconciliation logs. Or switch to a demo role to test full actions:
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => quickLoginDemoRole('BUSINESS_OWNER')}
+              className="px-3 py-1.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 border border-emerald-700/50 text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Owner Demo
+            </button>
+            <button
+              onClick={() => quickLoginDemoRole('SENDER')}
+              className="px-3 py-1.5 rounded-xl bg-blue-900/60 hover:bg-blue-800 text-blue-300 border border-blue-700/50 text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Sender Demo
+            </button>
+            <button
+              onClick={() => quickLoginDemoRole('RECEIVER')}
+              className="px-3 py-1.5 rounded-xl bg-amber-900/60 hover:bg-amber-800 text-amber-300 border border-amber-700/50 text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Receiver Demo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Banner if API error occurs */}
+      {error && (
+        <div className="bg-red-950/60 border border-red-800/60 rounded-xl p-3 text-xs text-red-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => loadDispatches()}
+            className="px-2.5 py-1 bg-red-900/50 hover:bg-red-800 rounded-lg text-[11px] font-semibold text-red-200 cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
@@ -182,12 +245,12 @@ export const DispatchListPage: React.FC<DispatchListPageProps> = ({
                       </div>
                     </td>
                     <td className="py-3.5 text-slate-300">
-                      <div className="font-medium text-slate-200">{d.businessName}</div>
+                      <div className="font-medium text-slate-200">{d.senderBusinessName}</div>
                       <div className="text-[10px] text-slate-500">By {d.senderName}</div>
                     </td>
                     <td className="py-3.5 text-slate-200">
                       <div className="font-semibold">{d.partnerName}</div>
-                      <div className="text-[10px] text-slate-400 truncate max-w-xs">{d.destinationAddress}</div>
+                      <div className="text-[10px] text-slate-400 truncate max-w-xs">{d.destinationSnapshot?.address || 'Partner Destination'}</div>
                     </td>
                     <td className="py-3.5">
                       <StatusBadge status={d.status} size="sm" />
@@ -209,14 +272,14 @@ export const DispatchListPage: React.FC<DispatchListPageProps> = ({
                     </td>
                     <td className="py-3.5">
                       <div className="font-mono text-slate-200">
-                        {d.totalItemsDispatched} units
+                        {d.totalQuantityDispatched} units
                       </div>
-                      {d.totalItemsLost !== undefined && d.totalItemsLost > 0 ? (
+                      {d.totalQuantityLost !== undefined && d.totalQuantityLost > 0 ? (
                         <span className="text-[10px] text-rose-400 font-bold flex items-center gap-1">
                           <AlertTriangle className="w-3 h-3" />
-                          Loss: {d.totalItemsLost} units
+                          Loss: {d.totalQuantityLost} units
                         </span>
-                      ) : d.totalItemsReceived !== undefined ? (
+                      ) : d.totalQuantityReceived !== undefined ? (
                         <span className="text-[10px] text-emerald-400 font-medium">100% Intact</span>
                       ) : (
                         <span className="text-[10px] text-slate-500">Pending</span>

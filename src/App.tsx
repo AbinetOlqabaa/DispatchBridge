@@ -18,8 +18,10 @@ import { DispatchDetailPage } from './pages/dispatches/DispatchDetailPage.js';
 import { CreateDispatchModal } from './pages/dispatches/CreateDispatchModal.js';
 import { PublicPartnerView } from './pages/dispatches/PublicPartnerView.js';
 import { PartnersPage } from './pages/partners/PartnersPage.js';
+import { LocationsPage } from './pages/locations/LocationsPage.js';
 import { AuditPage } from './pages/audit/AuditPage.js';
 import { SystemStatusPage } from './pages/system/SystemStatusPage.js';
+import { NotificationDrawer } from './components/notifications/NotificationDrawer.js';
 
 function MainApp() {
   const { user } = useAuth();
@@ -29,10 +31,11 @@ function MainApp() {
   const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
   const [publicShareToken, setPublicShareToken] = useState<string | null>(null);
 
-  // Modal State
+  // Modal & Drawer State
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'register' | 'forgot' | 'verifyPhone'>('signin');
   const [isCreateDispatchOpen, setIsCreateDispatchOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Check URL search params for public delivery share token (?token=...)
   useEffect(() => {
@@ -126,6 +129,7 @@ function MainApp() {
           setAuthModalMode('signin');
           setIsAuthModalOpen(true);
         }}
+        onOpenNotifications={() => setIsNotificationsOpen(true)}
       />
 
       {/* Sandbox Isolation & Notification Banners */}
@@ -158,6 +162,7 @@ function MainApp() {
                 onOpenPublicLink={(token) => setPublicShareToken(token)}
               />
             )}
+            {currentTab === 'locations' && <LocationsPage />}
             {currentTab === 'partners' && (
               <PartnersPage
                 onCreateDispatchWithPartner={(partnerId) => {
@@ -177,6 +182,16 @@ function MainApp() {
         onSelectTab={(tab) => {
           setSelectedDispatchId(null);
           setCurrentTab(tab);
+        }}
+      />
+
+      {/* In-app Notification Alerts Drawer */}
+      <NotificationDrawer
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        onSelectDispatch={(id) => {
+          setSelectedDispatchId(id);
+          setIsNotificationsOpen(false);
         }}
       />
 

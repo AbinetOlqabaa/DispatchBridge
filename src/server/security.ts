@@ -31,18 +31,18 @@ export function getBootstrapStatus() {
 }
 
 export function redeemBootstrapToken(providedToken: string): boolean {
-  if (superAdminProvisioned) {
+  if (superAdminProvisioned || !activeBootstrapToken || !providedToken) {
     return false;
   }
-  if (!activeBootstrapToken || !providedToken) {
+  const bufProvided = Buffer.from(providedToken);
+  const bufActive = Buffer.from(activeBootstrapToken);
+
+  if (bufProvided.length !== bufActive.length) {
     return false;
   }
 
   // Constant-time comparison
-  const isValid = crypto.timingSafeEqual(
-    Buffer.from(providedToken),
-    Buffer.from(activeBootstrapToken)
-  );
+  const isValid = crypto.timingSafeEqual(bufProvided, bufActive);
 
   if (isValid) {
     superAdminProvisioned = true;

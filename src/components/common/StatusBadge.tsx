@@ -52,11 +52,11 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' })
           Received Complete
         </span>
       );
-    case 'DISPUTED':
+    case 'DISCREPANCY_REVIEW':
       return (
         <span className={`inline-flex items-center gap-1.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 ${sizeClasses}`}>
           <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
-          Under Dispute
+          Under Review / Dispute
         </span>
       );
     case 'RECONCILED':

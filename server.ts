@@ -10,6 +10,8 @@ import dispatchRoutes from './src/server/routes/dispatchRoutes.js';
 import partnerRoutes from './src/server/routes/partnerRoutes.js';
 import auditRoutes from './src/server/routes/auditRoutes.js';
 import systemRoutes from './src/server/routes/systemRoutes.js';
+import locationRoutes from './src/server/routes/locationRoutes.js';
+import notificationRoutes from './src/server/routes/notificationRoutes.js';
 
 dotenv.config();
 
@@ -25,8 +27,10 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Security headers
+  // Security headers & Request Correlation ID
   app.use((req, res, next) => {
+    const correlationId = (req.headers['x-correlation-id'] as string) || `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    res.setHeader('X-Correlation-ID', correlationId);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
@@ -37,6 +41,8 @@ async function startServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/dispatches', dispatchRoutes);
   app.use('/api/partners', partnerRoutes);
+  app.use('/api/locations', locationRoutes);
+  app.use('/api/notifications', notificationRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/system', systemRoutes);
 

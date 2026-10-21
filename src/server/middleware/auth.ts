@@ -32,6 +32,29 @@ export async function authenticate(
   }
 }
 
+export async function optionalAuthenticate(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+
+  const token = authHeader.substring(7).trim();
+  try {
+    const user = await sandboxStore.verifyToken(token);
+    if (user) {
+      req.user = user;
+    }
+  } catch {
+    // If token invalid or expired, continue as guest
+  }
+  next();
+}
+
 export function requireRole(...allowedRoles: UserRole[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {

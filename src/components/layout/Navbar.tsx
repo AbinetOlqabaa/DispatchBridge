@@ -12,6 +12,9 @@ import {
   Menu,
   X,
   UserCheck,
+  Bell,
+  Warehouse,
+  Building,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { UserRole } from '../../types/dispatch.js';
@@ -20,29 +23,52 @@ interface NavbarProps {
   currentTab: string;
   onSelectTab: (tab: string) => void;
   onOpenAuth: () => void;
+  onOpenNotifications: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, onOpenAuth }) => {
-  const { user, logout, quickLoginDemoRole } = useAuth();
+export const Navbar: React.FC<NavbarProps> = ({
+  currentTab,
+  onSelectTab,
+  onOpenAuth,
+  onOpenNotifications,
+}) => {
+  const { user, logout, quickLoginDemoRole, unreadNotifsCount } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roleSwitchOpen, setRoleSwitchOpen] = useState(false);
 
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
       case 'SUPER_ADMIN':
-        return <span className="bg-purple-950 text-purple-300 border border-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Super Admin</span>;
+        return (
+          <span className="bg-purple-950 text-purple-300 border border-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+            Super Admin
+          </span>
+        );
       case 'BUSINESS_OWNER':
-        return <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Business Owner</span>;
+        return (
+          <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+            Business Owner
+          </span>
+        );
       case 'SENDER':
-        return <span className="bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Dispatcher / Sender</span>;
+        return (
+          <span className="bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+            Dispatcher / Sender
+          </span>
+        );
       case 'RECEIVER':
-        return <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Receiver / Partner</span>;
+        return (
+          <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+            Receiver / Partner
+          </span>
+        );
     }
   };
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Activity, show: !!user },
     { id: 'dispatches', label: 'Dispatches', icon: Truck, show: true },
+    { id: 'locations', label: 'Origins & Docks', icon: Warehouse, show: !!user && user.role !== 'RECEIVER' },
     { id: 'partners', label: 'Partners', icon: Users, show: !!user && user.role !== 'RECEIVER' },
     { id: 'audit', label: 'Audit Trail', icon: FileText, show: !!user && (user.role === 'SUPER_ADMIN' || user.role === 'BUSINESS_OWNER') },
     { id: 'status', label: 'System Status', icon: Shield, show: true },
@@ -56,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, onOpenA
           <div className="flex items-center gap-3">
             <button
               onClick={() => onSelectTab(user ? 'dashboard' : 'dispatches')}
-              className="flex items-center gap-2.5 text-left group focus:outline-none"
+              className="flex items-center gap-2.5 text-left group focus:outline-none cursor-pointer"
             >
               <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-sky-500 to-teal-400 p-0.5 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
                 <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
@@ -66,9 +92,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, onOpenA
               <div>
                 <span className="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
                   DispatchBridge
-                  <span className="text-[10px] font-medium bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">KERNEL</span>
+                  <span className="text-[10px] font-medium bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
+                    B2B KERNEL
+                  </span>
                 </span>
-                <span className="text-[11px] text-slate-400 block -mt-0.5">B2B Delivery & Reconciliation</span>
+                <span className="text-[11px] text-slate-400 block -mt-0.5">
+                  Delivery & Reconciliation
+                </span>
               </div>
             </button>
           </div>
@@ -95,8 +125,23 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, onOpenA
             })}
           </div>
 
-          {/* Right section: Role switcher & User menu */}
+          {/* Right section: Notification bell, Role switcher & User menu */}
           <div className="hidden md:flex items-center gap-3">
+            {/* Notification Bell */}
+            {user && (
+              <button
+                onClick={onOpenNotifications}
+                className="relative p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="In-app notification alerts"
+                aria-label="View notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadNotifsCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                )}
+              </button>
+            )}
+
             {/* Demo Role Quick Switcher */}
             <div className="relative">
               <button
@@ -177,8 +222,20 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, onOpenA
             )}
           </div>
 
-          {/* Mobile hamburger button */}
+          {/* Mobile buttons */}
           <div className="flex md:hidden items-center gap-2">
+            {user && (
+              <button
+                onClick={onOpenNotifications}
+                className="p-2 rounded-lg text-slate-400 hover:text-white relative"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadNotifsCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-500" />
+                )}
+              </button>
+            )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 focus:outline-none"

@@ -95,7 +95,7 @@ export const ReceiverDashboard: React.FC<ReceiverDashboardProps> = ({ onSelectDi
                 <div className="space-y-1.5 text-xs text-slate-300 mb-4">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Shipper / Supplier:</span>
-                    <span className="font-semibold text-slate-200">{d.businessName}</span>
+                    <span className="font-semibold text-slate-200">{d.senderBusinessName}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Carrier / Driver:</span>
@@ -103,7 +103,7 @@ export const ReceiverDashboard: React.FC<ReceiverDashboardProps> = ({ onSelectDi
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Manifest Contents:</span>
-                    <span>{d.items.length} lines ({d.totalItemsDispatched} units)</span>
+                    <span>{d.lines.length} lines ({d.totalQuantityDispatched} units)</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Sent Date:</span>
@@ -148,17 +148,17 @@ export const ReceiverDashboard: React.FC<ReceiverDashboardProps> = ({ onSelectDi
               {completedReceipts.map((d) => (
                 <tr key={d.id} className="hover:bg-slate-800/40">
                   <td className="py-3 font-mono font-semibold text-indigo-300">{d.dispatchNumber}</td>
-                  <td className="py-3 text-slate-300">{d.businessName}</td>
+                  <td className="py-3 text-slate-300">{d.senderBusinessName}</td>
                   <td className="py-3">
                     <StatusBadge status={d.status} size="sm" />
                   </td>
                   <td className="py-3">
                     <div className="font-mono">
-                      {d.totalItemsReceived} / {d.totalItemsDispatched} units
+                      {d.totalQuantityReceived ?? 0} / {d.totalQuantityDispatched} units
                     </div>
-                    {d.totalItemsLost && d.totalItemsLost > 0 ? (
+                    {d.totalQuantityLost && d.totalQuantityLost > 0 ? (
                       <span className="text-[10px] text-rose-400 font-semibold">
-                        Loss: {d.totalItemsLost} units
+                        Loss: {d.totalQuantityLost} units
                       </span>
                     ) : (
                       <span className="text-[10px] text-emerald-400 font-medium">100% Intact</span>

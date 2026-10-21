@@ -13,7 +13,7 @@ import {
   UserCheck,
   Package,
 } from 'lucide-react';
-import { Dispatch, LossReason } from '../../types/dispatch.js';
+import { DiscrepancyType, Dispatch, ItemCondition } from '../../types/dispatch.js';
 import { api } from '../../services/api.js';
 import { StatusBadge } from '../../components/common/StatusBadge.js';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner.js';
@@ -30,13 +30,13 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
 
   // Receipt verification form
   const [isVerifying, setIsVerifying] = useState(false);
-  const [itemReceipts, setItemReceipts] = useState<
+  const [lineReceipts, setLineReceipts] = useState<
     Array<{
       id: string;
-      receivedQty: number;
-      lossQty: number;
-      lossReason: LossReason;
-      conditionNote: string;
+      quantityReceived: number;
+      condition: ItemCondition;
+      discrepancyType: DiscrepancyType;
+      notes: string;
     }>
   >([]);
   const [signerName, setSignerName] = useState('');
@@ -57,37 +57,36 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
     try {
       const data = await api.getPublicDispatch(shareToken);
       setDispatch(data);
-      setItemReceipts(
-        data.items.map((i) => ({
-          id: i.id,
-          receivedQty: i.receivedQty !== undefined ? i.receivedQty : i.dispatchedQty,
-          lossQty: i.lossQty || 0,
-          lossReason: i.lossReason || 'NONE',
-          conditionNote: i.conditionNote || '',
+      setLineReceipts(
+        data.lines.map((l) => ({
+          id: l.id,
+          quantityReceived: l.quantityReceived !== undefined ? l.quantityReceived : l.quantitySent,
+          condition: l.condition || 'GOOD',
+          discrepancyType: l.discrepancyType || 'NONE',
+          notes: l.notes || '',
         }))
       );
     } catch (err: any) {
-      setError(err.message || 'Delivery manifest not found or expired.');
+      setError(err.message || 'Delivery manifest not found or link has expired.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleItemCountChange = (index: number, receivedCount: number) => {
+  const handleLineCountChange = (index: number, receivedCount: number) => {
     if (!dispatch) return;
-    const original = dispatch.items[index];
+    const original = dispatch.lines[index];
     const recv = Math.max(0, receivedCount);
-    const loss = Math.max(0, original.dispatchedQty - recv);
+    const loss = Math.max(0, original.quantitySent - recv);
 
-    const updated = [...itemReceipts];
-    updated[index].receivedQty = recv;
-    updated[index].lossQty = loss;
+    const updated = [...lineReceipts];
+    updated[index].quantityReceived = recv;
     if (loss === 0) {
-      updated[index].lossReason = 'NONE';
-    } else if (updated[index].lossReason === 'NONE') {
-      updated[index].lossReason = 'DAMAGED_IN_TRANSIT';
+      updated[index].discrepancyType = 'NONE';
+    } else if (updated[index].discrepancyType === 'NONE') {
+      updated[index].discrepancyType = updated[index].condition === 'DAMAGED' ? 'DAMAGED' : 'SHORTAGE';
     }
-    setItemReceipts(updated);
+    setLineReceipts(updated);
   };
 
   const handleSubmitReceipt = async (e: React.FormEvent) => {
@@ -100,7 +99,7 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
 
     try {
       const updated = await api.recordReceipt(dispatch.id, {
-        items: itemReceipts,
+        lines: lineReceipts,
         signoff: {
           signerName: signerName.trim() || 'Verified Receiver',
           signerRole: signerRole.trim() || 'Dock Lead',
@@ -109,7 +108,7 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
       });
       setDispatch(updated);
       setIsVerifying(false);
-      setSubmitSuccess('Official delivery receipt signed and verified! The sender has been notified.');
+      setSubmitSuccess('Official delivery receipt verified! Shipper has been notified and audit entry recorded.');
     } catch (err: any) {
       setSubmitError(err.message || 'Failed to submit receipt confirmation.');
     } finally {
@@ -141,7 +140,7 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 px-4 py-6">
-      {/* Top Banner with exit and print */}
+      {/* Top Banner */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold">
@@ -180,12 +179,12 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
               Supplier Delivery Manifest
             </div>
             <h1 className="text-2xl font-bold font-mono text-white mt-0.5">{dispatch.dispatchNumber}</h1>
-            <p className="text-xs text-slate-400">Issued by {dispatch.businessName}</p>
+            <p className="text-xs text-slate-400">Issued by {dispatch.senderBusinessName}</p>
           </div>
           <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1">
             <StatusBadge status={dispatch.status} />
             <span className="text-[11px] text-slate-400 font-mono">
-              Sent: {dispatch.dispatchedAt ? new Date(dispatch.dispatchedAt).toLocaleDateString() : 'Today'}
+              Dispatched: {new Date(dispatch.dispatchedAt).toLocaleDateString()}
             </span>
           </div>
         </div>
@@ -194,8 +193,8 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div className="bg-slate-800/40 p-3.5 rounded-xl border border-slate-800">
             <span className="text-slate-500 font-semibold block mb-1">Delivering Shipper:</span>
-            <div className="font-bold text-white text-sm">{dispatch.businessName}</div>
-            <div className="text-slate-400 text-[11px] mt-0.5">Dispatcher: {dispatch.senderName}</div>
+            <div className="font-bold text-white text-sm">{dispatch.senderBusinessName}</div>
+            <div className="text-slate-400 text-[11px] mt-0.5">Origin: {dispatch.originLocationSnapshot.label}</div>
             <div className="text-slate-400 text-[11px]">
               Driver: {dispatch.driverName || 'Standard Freight'} ({dispatch.vehicleReg || 'TRK'})
             </div>
@@ -203,10 +202,10 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
 
           <div className="bg-slate-800/40 p-3.5 rounded-xl border border-slate-800">
             <span className="text-slate-500 font-semibold block mb-1">Receiving Destination:</span>
-            <div className="font-bold text-white text-sm">{dispatch.partnerName}</div>
+            <div className="font-bold text-white text-sm">{dispatch.destinationSnapshot.partnerName}</div>
             <div className="text-slate-400 text-[11px] mt-0.5 flex items-start gap-1">
               <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
-              <span>{dispatch.destinationAddress}</span>
+              <span>{dispatch.destinationSnapshot.address}</span>
             </div>
           </div>
         </div>
@@ -227,51 +226,49 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
         </div>
       )}
 
-      {/* Manifest Items List */}
+      {/* Manifest Lines List */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <Package className="w-4 h-4 text-sky-400" />
-            Cargo Checklist ({dispatch.items.length} items)
+            Cargo Checklist ({dispatch.lines.length} items)
           </h2>
           <span className="text-xs font-mono font-semibold text-slate-300">
-            Total Dispatched: {dispatch.totalItemsDispatched} units
+            Total Dispatched: {dispatch.totalQuantityDispatched} units
           </span>
         </div>
 
         <div className="divide-y divide-slate-800/80">
-          {dispatch.items.map((item, idx) => (
-            <div key={item.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          {dispatch.lines.map((line) => (
+            <div key={line.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
               <div>
-                <span className="font-mono text-[11px] text-indigo-300 font-semibold mr-2">{item.sku}</span>
-                <span className="font-semibold text-slate-200">{item.description}</span>
-                {item.conditionNote && (
-                  <p className="text-[11px] text-rose-300 mt-0.5">Note: {item.conditionNote}</p>
-                )}
+                <span className="font-mono text-[11px] text-indigo-300 font-semibold mr-2">{line.sku}</span>
+                <span className="font-semibold text-slate-200">{line.itemName}</span>
+                {line.notes && <p className="text-[11px] text-rose-300 mt-0.5">Note: {line.notes}</p>}
               </div>
 
               <div className="flex items-center gap-4 text-right shrink-0">
                 <div>
                   <span className="text-[11px] text-slate-500 block">Sent</span>
                   <span className="font-mono font-bold text-slate-200">
-                    {item.dispatchedQty} {item.unit}
+                    {line.quantitySent} {line.unit}
                   </span>
                 </div>
 
-                {item.receivedQty !== undefined && (
+                {line.quantityReceived !== undefined && (
                   <div>
                     <span className="text-[11px] text-slate-500 block">Received</span>
                     <span className="font-mono font-bold text-emerald-400">
-                      {item.receivedQty} {item.unit}
+                      {line.quantityReceived} {line.unit}
                     </span>
                   </div>
                 )}
 
-                {item.lossQty && item.lossQty > 0 ? (
+                {line.lossQty && line.lossQty > 0 ? (
                   <div>
                     <span className="text-[11px] text-rose-400 block font-semibold">Short</span>
                     <span className="font-mono font-bold text-rose-400">
-                      -{item.lossQty} {item.unit}
+                      -{line.lossQty} {line.unit}
                     </span>
                   </div>
                 ) : null}
@@ -319,7 +316,7 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
         <div className="bg-slate-900 border border-amber-700/80 rounded-2xl p-6 shadow-2xl space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h3 className="text-sm font-bold text-white">Confirm Dock Count & Sign Off</h3>
-            <button onClick={() => setIsVerifying(false)} className="text-xs text-slate-400 hover:text-white">
+            <button onClick={() => setIsVerifying(false)} className="text-xs text-slate-400 hover:text-white cursor-pointer">
               Cancel
             </button>
           </div>
@@ -333,55 +330,73 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
 
           <form onSubmit={handleSubmitReceipt} className="space-y-4">
             <div className="space-y-3">
-              {dispatch.items.map((item, idx) => (
-                <div key={item.id} className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 text-xs space-y-2">
+              {dispatch.lines.map((line, idx) => (
+                <div key={line.id} className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 text-xs space-y-2">
                   <div className="flex justify-between font-semibold">
-                    <span className="text-white">{item.description}</span>
-                    <span className="text-slate-400 font-mono">Dispatched: {item.dispatchedQty} {item.unit}</span>
+                    <span className="text-white">{line.itemName}</span>
+                    <span className="text-slate-400 font-mono">Dispatched: {line.quantitySent} {line.unit}</span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Received ({item.unit})</label>
+                      <label className="block text-[11px] text-slate-400 mb-1">Received ({line.unit})</label>
                       <input
                         type="number"
                         min={0}
-                        max={item.dispatchedQty}
-                        value={itemReceipts[idx]?.receivedQty || 0}
-                        onChange={(e) => handleItemCountChange(idx, parseInt(e.target.value) || 0)}
+                        step="any"
+                        value={lineReceipts[idx]?.quantityReceived || 0}
+                        onChange={(e) => handleLineCountChange(idx, parseFloat(e.target.value) || 0)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Loss Reason (if short)</label>
+                      <label className="block text-[11px] text-slate-400 mb-1">Condition</label>
                       <select
-                        value={itemReceipts[idx]?.lossReason || 'NONE'}
+                        value={lineReceipts[idx]?.condition || 'GOOD'}
                         onChange={(e) => {
-                          const updated = [...itemReceipts];
-                          updated[idx].lossReason = e.target.value as LossReason;
-                          setItemReceipts(updated);
+                          const updated = [...lineReceipts];
+                          updated[idx].condition = e.target.value as ItemCondition;
+                          setLineReceipts(updated);
                         }}
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
                       >
-                        <option value="NONE">None (Full Count)</option>
-                        <option value="DAMAGED_IN_TRANSIT">Damaged In Transit</option>
-                        <option value="SHORTAGE_AT_SENDER">Shortage At Sender</option>
-                        <option value="WRONG_ITEM_DELIVERED">Wrong Item</option>
-                        <option value="EXPIRED_OR_COMPROMISED">Expired / Spoiled</option>
+                        <option value="GOOD">Good / Intact</option>
+                        <option value="DAMAGED">Damaged</option>
+                        <option value="LOST">Lost / Missing</option>
                         <option value="OTHER">Other</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Damage / Shortage Note</label>
+                      <label className="block text-[11px] text-slate-400 mb-1">Discrepancy Category</label>
+                      <select
+                        value={lineReceipts[idx]?.discrepancyType || 'NONE'}
+                        onChange={(e) => {
+                          const updated = [...lineReceipts];
+                          updated[idx].discrepancyType = e.target.value as DiscrepancyType;
+                          setLineReceipts(updated);
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
+                      >
+                        <option value="NONE">None (Full Count)</option>
+                        <option value="SHORTAGE">Shortage</option>
+                        <option value="DAMAGED">Damaged in Transit</option>
+                        <option value="OVERAGE">Overage (Excess)</option>
+                        <option value="NOT_RECEIVED">Not Received</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Inspection Note</label>
                       <input
                         type="text"
-                        value={itemReceipts[idx]?.conditionNote || ''}
+                        value={lineReceipts[idx]?.notes || ''}
                         onChange={(e) => {
-                          const updated = [...itemReceipts];
-                          updated[idx].conditionNote = e.target.value;
-                          setItemReceipts(updated);
+                          const updated = [...lineReceipts];
+                          updated[idx].notes = e.target.value;
+                          setLineReceipts(updated);
                         }}
                         placeholder="e.g. 2 boxes crushed"
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
@@ -432,7 +447,7 @@ export const PublicPartnerView: React.FC<PublicPartnerViewProps> = ({ shareToken
               <button
                 type="button"
                 onClick={() => setIsVerifying(false)}
-                className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                className="px-4 py-2 text-xs text-slate-400 hover:text-white cursor-pointer"
               >
                 Cancel
               </button>

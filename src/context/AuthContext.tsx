@@ -1,16 +1,22 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, UserRole } from '../types/dispatch.js';
+import { NotificationItem, User, UserRole } from '../types/dispatch.js';
 import { api } from '../services/api.js';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  notifications: NotificationItem[];
+  unreadNotifsCount: number;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: any) => Promise<void>;
   logout: () => void;
   verifyPhone: (code: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshNotifications: () => Promise<void>;
+  markNotificationAsRead: (id: string) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
+  switchBusiness: (businessId: string) => Promise<void>;
   quickLoginDemoRole: (role: UserRole) => Promise<void>;
 }
 
@@ -20,6 +26,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(api.getCurrentUser());
   const [token, setToken] = useState<string | null>(api.getToken());
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  const fetchNotifs = async () => {
+    if (api.getToken()) {
+      try {
+        const notifs = await api.getNotifications();
+        setNotifications(notifs);
+      } catch {
+        // Silently catch
+      }
+    } else {
+      setNotifications([]);
+    }
+  };
 
   useEffect(() => {
     const initAuth = async () => {
@@ -27,8 +47,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const profile = await api.getProfile();
           setUser(profile);
+          await fetchNotifs();
         } catch {
-          // Token invalid or server rebooted
           api.clearSession();
           setUser(null);
           setToken(null);
@@ -44,18 +64,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const res = await api.login(email, password);
     setUser(res.user);
     setToken(res.token);
+    await fetchNotifs();
   };
 
   const register = async (payload: any) => {
     const res = await api.register(payload);
     setUser(res.user);
     setToken(res.token);
+    await fetchNotifs();
   };
 
   const logout = () => {
     api.clearSession();
     setUser(null);
     setToken(null);
+    setNotifications([]);
   };
 
   const verifyPhone = async (code: string) => {
@@ -74,6 +97,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshNotifications = async () => {
+    await fetchNotifs();
+  };
+
+  const markNotificationAsRead = async (id: string) => {
+    await api.markNotificationRead(id);
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true, readAt: new Date().toISOString() } : n))
+    );
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    await api.markAllNotificationsRead();
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, isRead: true, readAt: new Date().toISOString() }))
+    );
+  };
+
+  const switchBusiness = async (businessId: string) => {
+    const updated = await api.switchActiveBusiness(businessId);
+    setUser(updated);
+    await fetchNotifs();
+  };
+
   const quickLoginDemoRole = async (role: UserRole) => {
     const roleCreds: Record<UserRole, { email: string }> = {
       BUSINESS_OWNER: { email: 'owner@apexsupply.com' },
@@ -88,17 +135,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const unreadNotifsCount = notifications.filter((n) => !n.isRead).length;
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         isLoading,
+        notifications,
+        unreadNotifsCount,
         login,
         register,
         logout,
         verifyPhone,
         refreshProfile,
+        refreshNotifications,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        switchBusiness,
         quickLoginDemoRole,
       }}
     >

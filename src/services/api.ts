@@ -1,6 +1,8 @@
 import {
   AuditLogEntry,
   Dispatch,
+  Location,
+  NotificationItem,
   Partner,
   SystemStatusInfo,
   User,
@@ -61,6 +63,11 @@ class ApiService {
     const headers = new Headers(options.headers || {});
     headers.set('Content-Type', 'application/json');
 
+    // Correlation ID tracking
+    if (!headers.has('X-Correlation-ID')) {
+      headers.set('X-Correlation-ID', `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
+    }
+
     if (this.token) {
       headers.set('Authorization', `Bearer ${this.token}`);
     }
@@ -81,7 +88,6 @@ class ApiService {
         const errorData = await response.json();
         errorMessage = errorData.error || errorData.message || errorMessage;
       } catch {
-        // Fallback to text
         const text = await response.text();
         if (text) errorMessage = text;
       }
@@ -120,6 +126,16 @@ class ApiService {
 
   async getProfile(): Promise<User> {
     const res = await this.request<{ user: User }>('/api/auth/me');
+    this.user = res.user;
+    localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+    return res.user;
+  }
+
+  async switchActiveBusiness(businessId: string): Promise<User> {
+    const res = await this.request<{ user: User }>('/api/auth/switch-business', {
+      method: 'POST',
+      body: JSON.stringify({ businessId }),
+    });
     this.user = res.user;
     localStorage.setItem(USER_KEY, JSON.stringify(res.user));
     return res.user;
@@ -181,31 +197,58 @@ class ApiService {
     return this.request(`/api/dispatches/public/${shareToken}`);
   }
 
-  async createDispatch(payload: any): Promise<Dispatch> {
+  async createDispatch(payload: any, idempotencyKey?: string): Promise<Dispatch> {
+    const key = idempotencyKey || `idem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     return this.request('/api/dispatches', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      headers: { 'X-Idempotency-Key': key },
+      body: JSON.stringify({ ...payload, idempotencyKey: key }),
     });
   }
 
   async recordReceipt(
     id: string,
     payload: {
-      items: Array<{
+      lines: Array<{
         id: string;
-        receivedQty: number;
-        lossQty: number;
-        lossReason?: string;
-        conditionNote?: string;
+        quantityReceived: number;
+        condition: string;
+        discrepancyType?: string;
+        notes?: string;
       }>;
       signoff: {
         signerName: string;
         signerRole: string;
         comments?: string;
       };
+      idempotencyKey?: string;
     }
   ): Promise<Dispatch> {
+    const key = payload.idempotencyKey || `idem_rcpt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     return this.request(`/api/dispatches/${id}/reconcile`, {
+      method: 'POST',
+      headers: { 'X-Idempotency-Key': key },
+      body: JSON.stringify({ ...payload, idempotencyKey: key }),
+    });
+  }
+
+  async respondToDiscrepancy(
+    dispatchId: string,
+    caseId: string,
+    payload: { status: 'ACKNOWLEDGED_BY_SENDER' | 'DISPUTED'; responseNotes: string }
+  ): Promise<Dispatch> {
+    return this.request(`/api/dispatches/${dispatchId}/discrepancies/${caseId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async resolveDiscrepancy(
+    dispatchId: string,
+    caseId: string,
+    payload: { resolution: string }
+  ): Promise<Dispatch> {
+    return this.request(`/api/dispatches/${dispatchId}/discrepancies/${caseId}/resolve`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -228,6 +271,31 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  }
+
+  // Locations (Origin terminals & warehouses)
+  async getLocations(): Promise<Location[]> {
+    return this.request('/api/locations');
+  }
+
+  async createLocation(payload: any): Promise<Location> {
+    return this.request('/api/locations', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // In-App Notifications
+  async getNotifications(): Promise<NotificationItem[]> {
+    return this.request('/api/notifications');
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    return this.request(`/api/notifications/${id}/read`, { method: 'PATCH' });
+  }
+
+  async markAllNotificationsRead(): Promise<void> {
+    return this.request('/api/notifications/read-all', { method: 'PATCH' });
   }
 
   // Audit Logs

@@ -67,18 +67,18 @@ export const BusinessOwnerDashboard: React.FC<BusinessOwnerDashboardProps> = ({
   // Calculations
   const totalDispatches = dispatches.length;
   const activeDispatches = dispatches.filter((d) => ['DISPATCHED', 'VIEWED', 'IN_TRANSIT'].includes(d.status)).length;
-  const totalItemsSent = dispatches.reduce((sum, d) => sum + d.totalItemsDispatched, 0);
-  const totalItemsReceived = dispatches.reduce((sum, d) => sum + (d.totalItemsReceived || 0), 0);
-  const totalItemsLost = dispatches.reduce((sum, d) => sum + (d.totalItemsLost || 0), 0);
+  const totalItemsSent = dispatches.reduce((sum, d) => sum + d.totalQuantityDispatched, 0);
+  const totalItemsReceived = dispatches.reduce((sum, d) => sum + (d.totalQuantityReceived || 0), 0);
+  const totalItemsLost = dispatches.reduce((sum, d) => sum + (d.totalQuantityLost || 0), 0);
   const reconciliationRate = totalItemsSent > 0 ? (((totalItemsReceived) / totalItemsSent) * 100).toFixed(1) : '100.0';
 
   // Group losses by reason
   const lossReasonBreakdown: Record<string, number> = {};
   dispatches.forEach((d) => {
-    d.items.forEach((item) => {
-      if (item.lossQty && item.lossQty > 0) {
-        const reason = item.lossReason || 'OTHER';
-        lossReasonBreakdown[reason] = (lossReasonBreakdown[reason] || 0) + item.lossQty;
+    d.lines.forEach((line) => {
+      if (line.lossQty && line.lossQty > 0) {
+        const reason = line.discrepancyType || 'OTHER';
+        lossReasonBreakdown[reason] = (lossReasonBreakdown[reason] || 0) + line.lossQty;
       }
     });
   });
@@ -209,7 +209,7 @@ export const BusinessOwnerDashboard: React.FC<BusinessOwnerDashboardProps> = ({
           <div className="divide-y divide-slate-800/80">
             {partners.slice(0, 4).map((p) => {
               const partnerDispatches = dispatches.filter((d) => d.partnerId === p.id);
-              const partnerLosses = partnerDispatches.reduce((s, d) => s + (d.totalItemsLost || 0), 0);
+              const partnerLosses = partnerDispatches.reduce((s, d) => s + (d.totalQuantityLost || 0), 0);
               return (
                 <div key={p.id} className="py-3 flex items-center justify-between text-xs">
                   <div>
@@ -264,20 +264,20 @@ export const BusinessOwnerDashboard: React.FC<BusinessOwnerDashboardProps> = ({
                   <td className="py-3.5 font-mono font-semibold text-indigo-300">{d.dispatchNumber}</td>
                   <td className="py-3.5 text-slate-200">
                     <div>{d.partnerName}</div>
-                    <div className="text-[11px] text-slate-500 truncate max-w-xs">{d.destinationAddress}</div>
+                    <div className="text-[11px] text-slate-500 truncate max-w-xs">{d.destinationSnapshot.address}</div>
                   </td>
                   <td className="py-3.5">
                     <StatusBadge status={d.status} size="sm" />
                   </td>
                   <td className="py-3.5 text-slate-300">
-                    {d.totalItemsDispatched} {d.items[0]?.unit || 'units'}
+                    {d.totalQuantityDispatched} {d.lines[0]?.unit || 'units'}
                   </td>
                   <td className="py-3.5">
-                    {d.totalItemsLost !== undefined ? (
-                      d.totalItemsLost > 0 ? (
+                    {d.totalQuantityLost !== undefined ? (
+                      d.totalQuantityLost > 0 ? (
                         <span className="text-rose-400 font-semibold flex items-center gap-1">
                           <AlertTriangle className="w-3.5 h-3.5" />
-                          Shortfall: {d.totalItemsLost} units
+                          Shortfall: {d.totalQuantityLost} units
                         </span>
                       ) : (
                         <span className="text-emerald-400 font-medium flex items-center gap-1">

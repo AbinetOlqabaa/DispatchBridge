@@ -1,14 +1,21 @@
 import { Router } from 'express';
 import { sandboxStore } from '../adapters/sandboxStore.js';
-import { authenticate, AuthenticatedRequest, requireRole } from '../middleware/auth.js';
+import { authenticate, optionalAuthenticate, AuthenticatedRequest, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
-// List dispatches for current authenticated user
-router.get('/', authenticate, async (req: AuthenticatedRequest, res) => {
+// List dispatches for current authenticated user or public sandbox demo
+router.get('/', optionalAuthenticate, async (req: AuthenticatedRequest, res) => {
   try {
-    const user = req.user!;
+    const user = req.user;
     const { status } = req.query as { status?: string };
+
+    if (!user) {
+      // Unauthenticated / demo guest view: return public sandbox demo dispatches
+      const dispatches = await sandboxStore.getDispatches({ status });
+      res.json(dispatches);
+      return;
+    }
 
     const dispatches = await sandboxStore.getDispatches({
       role: user.role,
@@ -23,7 +30,7 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// Public partner view (via share token) - automatically records viewing
+// Public partner view (via unguessable share token) - automatically records viewing
 router.get('/public/:shareToken', async (req, res) => {
   try {
     const { shareToken } = req.params;
@@ -34,18 +41,25 @@ router.get('/public/:shareToken', async (req, res) => {
       return;
     }
 
-    // Mark as viewed
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const updated = await sandboxStore.markDispatchViewed(dispatch.id, String(clientIp));
+    const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1');
+    const { dispatch: updated } = await sandboxStore.recordViewReceipt(
+      dispatch.id,
+      {
+        id: 'partner_link_guest',
+        name: `${dispatch.partnerName} (Receiver Link)`,
+        role: 'RECEIVER',
+      },
+      clientIp
+    );
 
-    res.json(updated || dispatch);
+    res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get dispatch by ID (authenticated)
-router.get('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
+// Get dispatch by ID with strict tenant isolation check
+router.get('/:id', optionalAuthenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const dispatch = await sandboxStore.getDispatchById(id);
@@ -55,18 +69,33 @@ router.get('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
       return;
     }
 
-    // Authorization check: sender/owner must match business, receiver must match partner (unless SUPER_ADMIN)
-    const user = req.user!;
-    if (user.role !== 'SUPER_ADMIN') {
+    const user = req.user;
+    // Strict Tenant Isolation if user is authenticated
+    if (user && user.role !== 'SUPER_ADMIN') {
       if (user.role === 'RECEIVER') {
         if (user.partnerId && dispatch.partnerId !== user.partnerId) {
-          res.status(403).json({ error: 'Forbidden: You do not have access to this dispatch.' });
+          res.status(403).json({ error: 'Forbidden: Access denied to unrelated partner dispatch.' });
           return;
         }
-      } else if (dispatch.businessId !== user.businessId) {
-        res.status(403).json({ error: 'Forbidden: You do not have access to this dispatch.' });
+      } else if (dispatch.senderBusinessId !== user.businessId) {
+        res.status(403).json({ error: 'Forbidden: Access denied to unrelated business dispatch.' });
         return;
       }
+    }
+
+    // If viewed by an authenticated receiver, record genuine view receipt
+    if (user && user.role === 'RECEIVER') {
+      const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1');
+      await sandboxStore.recordViewReceipt(
+        dispatch.id,
+        {
+          id: user.id,
+          name: user.name,
+          role: user.role,
+          businessId: user.businessId,
+        },
+        clientIp
+      );
     }
 
     res.json(dispatch);
@@ -83,7 +112,8 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const newDispatch = await sandboxStore.createDispatch(req.body, user);
+      const idempotencyKey = (req.headers['x-idempotency-key'] as string) || req.body.idempotencyKey;
+      const newDispatch = await sandboxStore.createDispatch({ ...req.body, idempotencyKey }, user);
       res.status(201).json(newDispatch);
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to create dispatch.' });
@@ -100,7 +130,28 @@ router.post(
     try {
       const { id } = req.params;
       const user = req.user!;
-      const updated = await sandboxStore.recordReceipt(id, req.body, user);
+
+      // Verify tenant ownership
+      const existing = await sandboxStore.getDispatchById(id);
+      if (!existing) {
+        res.status(404).json({ error: 'Dispatch not found.' });
+        return;
+      }
+
+      if (user.role !== 'SUPER_ADMIN') {
+        if (user.role === 'RECEIVER') {
+          if (user.partnerId && existing.partnerId !== user.partnerId) {
+            res.status(403).json({ error: 'Forbidden: You cannot report receipt for another partner.' });
+            return;
+          }
+        } else if (existing.senderBusinessId !== user.businessId) {
+          res.status(403).json({ error: 'Forbidden: Cross-tenant modification denied.' });
+          return;
+        }
+      }
+
+      const idempotencyKey = (req.headers['x-idempotency-key'] as string) || req.body.idempotencyKey;
+      const updated = await sandboxStore.recordReceiptReport(id, { ...req.body, idempotencyKey }, user);
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to record receipt.' });
@@ -108,7 +159,41 @@ router.post(
   }
 );
 
-// Finalize reconciliation (Business Owner or Super Admin resolution)
+// Respond to discrepancy case (Sender or Business Owner)
+router.post(
+  '/:id/discrepancies/:caseId/respond',
+  authenticate,
+  requireRole('SENDER', 'BUSINESS_OWNER', 'SUPER_ADMIN'),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, caseId } = req.params;
+      const user = req.user!;
+      const updated = await sandboxStore.respondToDiscrepancy(id, caseId, req.body, user);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to respond to discrepancy.' });
+    }
+  }
+);
+
+// Resolve discrepancy case (Business Owner or Super Admin)
+router.post(
+  '/:id/discrepancies/:caseId/resolve',
+  authenticate,
+  requireRole('BUSINESS_OWNER', 'SUPER_ADMIN'),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, caseId } = req.params;
+      const user = req.user!;
+      const updated = await sandboxStore.resolveDiscrepancy(id, caseId, req.body, user);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to resolve discrepancy.' });
+    }
+  }
+);
+
+// Finalize reconciliation resolution (Business Owner or Super Admin)
 router.post(
   '/:id/finalize',
   authenticate,

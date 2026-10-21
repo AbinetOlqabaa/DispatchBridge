@@ -1,37 +1,44 @@
-# Master Plan: Business Dispatch & Delivery Reconciliation System
+# Master implementation plan
 
-## Phase 1: Core Kernel (Current Phase)
-- [x] Application shell, PWA setup, responsive UI, accessible design tokens.
-- [x] Full-stack architecture with Express backend + React Vite frontend.
-- [x] Authentication flows (Sign in, Register, Password Reset, Visibility Toggle, Phone verification mock).
-- [x] Role-aware dashboard shells:
-  - Super Administrator
-  - Business Owner
-  - Sender / Dispatcher
-  - Receiver / Partner
-- [x] Domain models and Adapter Abstractions (`IAuthAdapter`, `IDatabaseAdapter`, `INotificationAdapter`, `IAuditAdapter`).
-- [x] Dispatch list and itemized dispatch creation form with validation.
-- [x] Proof-of-delivery reconciliation flow (quantity discrepancy & loss reason logging).
-- [x] Secure Server-side Superadmin Provisioning token flow (no hardcoded backdoor).
-- [x] Configuration / Status diagnostics page (`/system/status`).
-- [x] Sandbox isolation and test accounts.
+## Execution protocol
+Work sequentially. Before each phase, read its context file. After each phase:
+- implement the code and required configuration;
+- run relevant tests and a build/type-check/lint command where available;
+- fix failures before proceeding;
+- update `.ai/BUILD_STATE.md`;
+- record deviations and external setup tasks honestly.
 
-## Phase 2: Production Cloud Persistence & Security Rules
-- [ ] Connect Firebase Authentication & Cloud Firestore adapter.
-- [ ] Implement and deploy granular `firestore.rules` for tenant isolation and partner access.
-- [ ] Server-side Firebase Admin verification.
+If the project already has equivalent functionality, verify it and improve it rather than duplicating it.
 
-## Phase 3: Notifications & Real-Time Delivery Updates
-- [ ] SMS / WhatsApp webhook adapters for dispatch notifications.
-- [ ] Automatic notification trigger when receiver views delivery list.
-- [ ] Immediate alert to sender/owner when item discrepancy or loss is flagged.
+## Phase order
+1. `.ai/01_PRODUCT_REQUIREMENTS.md` — confirm roles, workflows, acceptance criteria.
+2. `.ai/02_ARCHITECTURE_AND_DATA_MODEL.md` — app structure, entities, relationships, timestamps, state machine.
+3. `.ai/03_AUTH_AND_AUTHORIZATION.md` — identity, roles, onboarding, super-admin provisioning, permissions.
+4. `.ai/04_DISPATCH_AND_RECONCILIATION.md` — dispatch creation, recipient viewing, receipt confirmation and discrepancy resolution.
+5. `.ai/05_NOTIFICATIONS_AND_AUDIT.md` — notification adapters, event rules, audit log.
+6. `.ai/06_UI_UX_AND_ACCESSIBILITY.md` — responsive screens, role dashboards, loading/empty/error states.
+7. `.ai/07_SECURITY_PRIVACY_AND_FAILURES.md` — threat model, validation, abuse protection, graceful failures.
+8. `.ai/08_TESTING_AND_ACCEPTANCE.md` — unit, integration, rules, workflow and end-to-end test strategy.
+9. `.ai/09_RELEASE_CHECKLIST.md` — deployment/configuration and honest release assessment.
 
-## Phase 4: Mobile Handheld Optimization & Offline Sync
-- [ ] IndexedDB local cache for drivers and warehouse workers.
-- [ ] Background sync queue when cellular signal is restored.
-- [ ] Barcode / QR scanner integration for rapid item verification.
+## Definition of done for each phase
+- All required user paths are implemented or explicitly marked blocked by a real dependency.
+- Server-side authorization is in place for protected data mutations.
+- Validation and useful error feedback exist.
+- Tests have been added and actually run where tools support them.
+- No obvious regression in previously working flows.
+- Build state and setup instructions are updated.
 
-## Phase 5: Digital Proof & Legal Audit Export
-- [ ] Canvas signature capture on delivery receipt.
-- [ ] Photo attachment upload for damaged cargo.
-- [ ] Cryptographic hash chain on audit log entries for court-admissible audit export.
+## End-to-end target
+A business owner can create a partner and dispatch, list multiple item types and quantities, set dispatch origin and recipient details, send/share the dispatch, and see a reliable view receipt when the partner actually opens it while authenticated. The receiver can confirm quantities received per line, mark full/partial/not received, damaged/lost or other discrepancy, add notes and optional evidence, and submit. Both parties see the same reconciled record and receive supported notifications. All important actions are permission-checked and audited.
+
+## Build-state discipline
+`.ai/BUILD_STATE.md` must include:
+- current date/time and project/runtime type;
+- stack and architecture actually present;
+- current phase and completed phases;
+- changed files;
+- exact test/build commands and pass/fail/skipped status;
+- working flows versus mock-only flows;
+- unresolved defects and external setup requirements;
+- exact next action for a new session.

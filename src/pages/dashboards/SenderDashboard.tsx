@@ -176,7 +176,7 @@ export const SenderDashboard: React.FC<SenderDashboardProps> = ({
                   </td>
                   <td className="py-3.5 text-slate-200">
                     <div className="font-semibold">{d.partnerName}</div>
-                    <div className="text-[11px] text-slate-400 truncate max-w-xs">{d.destinationAddress}</div>
+                    <div className="text-[11px] text-slate-400 truncate max-w-xs">{d.destinationSnapshot.address}</div>
                   </td>
                   <td className="py-3.5">
                     <StatusBadge status={d.status} size="sm" />
@@ -202,7 +202,7 @@ export const SenderDashboard: React.FC<SenderDashboardProps> = ({
                   <td className="py-3.5 text-slate-300">
                     <div>{d.driverName ? `${d.driverName} (${d.vehicleReg || 'Truck'})` : 'Carrier Unassigned'}</div>
                     <div className="text-[11px] text-slate-500">
-                      {d.items.length} line items • {d.totalItemsDispatched} units
+                      {d.lines.length} line items • {d.totalQuantityDispatched} units
                     </div>
                   </td>
                   <td className="py-3.5 text-right">

@@ -138,4 +138,19 @@ router.post('/bootstrap-superadmin', async (req, res) => {
   }
 });
 
+// Switch Active Business Context (multi-membership)
+router.post('/switch-business', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { businessId } = req.body;
+    if (!businessId) {
+      res.status(400).json({ error: 'businessId is required.' });
+      return;
+    }
+    const updatedUser = await sandboxStore.switchActiveBusiness(req.user!.id, businessId);
+    res.json({ user: updatedUser });
+  } catch (err: any) {
+    res.status(403).json({ error: err.message || 'Failed to switch business.' });
+  }
+});
+
 export default router;
