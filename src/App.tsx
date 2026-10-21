@@ -1,0 +1,208 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext.js';
+import { Navbar } from './components/layout/Navbar.js';
+import { BottomNav } from './components/layout/BottomNav.js';
+import { NotificationBanner } from './components/common/NotificationBanner.js';
+import { AuthModal } from './pages/auth/AuthModal.js';
+import { BusinessOwnerDashboard } from './pages/dashboards/BusinessOwnerDashboard.js';
+import { SenderDashboard } from './pages/dashboards/SenderDashboard.js';
+import { ReceiverDashboard } from './pages/dashboards/ReceiverDashboard.js';
+import { SuperAdminDashboard } from './pages/dashboards/SuperAdminDashboard.js';
+import { DispatchListPage } from './pages/dispatches/DispatchListPage.js';
+import { DispatchDetailPage } from './pages/dispatches/DispatchDetailPage.js';
+import { CreateDispatchModal } from './pages/dispatches/CreateDispatchModal.js';
+import { PublicPartnerView } from './pages/dispatches/PublicPartnerView.js';
+import { PartnersPage } from './pages/partners/PartnersPage.js';
+import { AuditPage } from './pages/audit/AuditPage.js';
+import { SystemStatusPage } from './pages/system/SystemStatusPage.js';
+
+function MainApp() {
+  const { user } = useAuth();
+
+  // Navigation State
+  const [currentTab, setCurrentTab] = useState<string>('dispatches');
+  const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
+  const [publicShareToken, setPublicShareToken] = useState<string | null>(null);
+
+  // Modal State
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'signin' | 'register' | 'forgot' | 'verifyPhone'>('signin');
+  const [isCreateDispatchOpen, setIsCreateDispatchOpen] = useState(false);
+
+  // Check URL search params for public delivery share token (?token=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      setPublicShareToken(token);
+    }
+  }, []);
+
+  // When user logs in and is on dispatches, gently pivot to their dashboard
+  useEffect(() => {
+    if (user && currentTab === 'dispatches' && !selectedDispatchId && !publicShareToken) {
+      setCurrentTab('dashboard');
+    }
+  }, [user]);
+
+  // If public token is active, show the partner delivery manifest
+  if (publicShareToken) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 antialiased pb-12">
+        <PublicPartnerView
+          shareToken={publicShareToken}
+          onExit={() => {
+            setPublicShareToken(null);
+            window.history.replaceState({}, '', window.location.pathname);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Render role-specific dashboard
+  const renderDashboard = () => {
+    if (!user) {
+      return (
+        <div className="p-8 text-center bg-slate-900 border border-slate-800 rounded-2xl max-w-lg mx-auto my-12 space-y-3">
+          <h2 className="text-lg font-bold text-white">Sign In Required</h2>
+          <p className="text-xs text-slate-400">
+            Please sign in to access your role-specific dashboard, or explore the public Dispatches and System Status pages.
+          </p>
+          <button
+            onClick={() => {
+              setAuthModalMode('signin');
+              setIsAuthModalOpen(true);
+            }}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl cursor-pointer"
+          >
+            Sign In to Dashboard
+          </button>
+        </div>
+      );
+    }
+
+    switch (user.role) {
+      case 'SUPER_ADMIN':
+        return <SuperAdminDashboard onNavigateStatus={() => setCurrentTab('status')} />;
+      case 'BUSINESS_OWNER':
+        return (
+          <BusinessOwnerDashboard
+            onSelectDispatch={(id) => setSelectedDispatchId(id)}
+            onNavigateTab={(tab) => setCurrentTab(tab)}
+            onCreateDispatch={() => setIsCreateDispatchOpen(true)}
+          />
+        );
+      case 'SENDER':
+        return (
+          <SenderDashboard
+            onSelectDispatch={(id) => setSelectedDispatchId(id)}
+            onCreateDispatch={() => setIsCreateDispatchOpen(true)}
+            onOpenPublicLink={(token) => setPublicShareToken(token)}
+          />
+        );
+      case 'RECEIVER':
+        return <ReceiverDashboard onSelectDispatch={(id) => setSelectedDispatchId(id)} />;
+      default:
+        return <DispatchListPage onSelectDispatch={(id) => setSelectedDispatchId(id)} onCreateDispatch={() => setIsCreateDispatchOpen(true)} onOpenPublicLink={(t) => setPublicShareToken(t)} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white pb-20 md:pb-8">
+      {/* Top Navigation */}
+      <Navbar
+        currentTab={currentTab}
+        onSelectTab={(tab) => {
+          setSelectedDispatchId(null);
+          setCurrentTab(tab);
+        }}
+        onOpenAuth={() => {
+          setAuthModalMode('signin');
+          setIsAuthModalOpen(true);
+        }}
+      />
+
+      {/* Sandbox Isolation & Notification Banners */}
+      <NotificationBanner
+        onOpenPhoneVerify={() => {
+          setAuthModalMode('verifyPhone');
+          setIsAuthModalOpen(true);
+        }}
+        onNavigateStatus={() => {
+          setSelectedDispatchId(null);
+          setCurrentTab('status');
+        }}
+      />
+
+      {/* Main View Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {selectedDispatchId ? (
+          <DispatchDetailPage
+            dispatchId={selectedDispatchId}
+            onBack={() => setSelectedDispatchId(null)}
+            onOpenPublicLink={(token) => setPublicShareToken(token)}
+          />
+        ) : (
+          <>
+            {currentTab === 'dashboard' && renderDashboard()}
+            {currentTab === 'dispatches' && (
+              <DispatchListPage
+                onSelectDispatch={(id) => setSelectedDispatchId(id)}
+                onCreateDispatch={() => setIsCreateDispatchOpen(true)}
+                onOpenPublicLink={(token) => setPublicShareToken(token)}
+              />
+            )}
+            {currentTab === 'partners' && (
+              <PartnersPage
+                onCreateDispatchWithPartner={(partnerId) => {
+                  setIsCreateDispatchOpen(true);
+                }}
+              />
+            )}
+            {currentTab === 'audit' && <AuditPage />}
+            {currentTab === 'status' && <SystemStatusPage />}
+          </>
+        )}
+      </main>
+
+      {/* Mobile Bottom Navigation */}
+      <BottomNav
+        currentTab={currentTab}
+        onSelectTab={(tab) => {
+          setSelectedDispatchId(null);
+          setCurrentTab(tab);
+        }}
+      />
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        initialMode={authModalMode}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+
+      {/* Create Dispatch Manifest Modal */}
+      <CreateDispatchModal
+        isOpen={isCreateDispatchOpen}
+        onClose={() => setIsCreateDispatchOpen(false)}
+        onSuccess={(createdId) => {
+          setSelectedDispatchId(createdId);
+        }}
+      />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
+  );
+}
